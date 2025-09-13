@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Worker Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>Testing Web Workers</h1>
+    <div id="status"></div>
+    <div id="results"></div>
+
+    <script>
+        const status = document.getElementById('status');
+        const results = document.getElementById('results');
+
+        function log(message, type = 'info') {
+            const p = document.createElement('p');
+            p.className = type;
+            p.textContent = message;
+            status.appendChild(p);
+        }
+
+        // Test worker script accessibility first
+        async function testWorkerAccess() {
+            log('🔍 Testing worker script accessibility...', 'info');
+            
+            // Test multiple possible paths
+            const pathsToTest = [
+                '/diseaseWorker.js',
+                '/workers/diseaseWorker.js',
+                './diseaseWorker.js',
+                './workers/diseaseWorker.js'
+            ];
+            
+            let workingPath = null;
+            
+            for (const path of pathsToTest) {
+                try {
+                    log(`Testing path: ${path}`, 'info');
+                    const response = await fetch(path);
+                    if (response.ok) {
+                        log(`✅ Found working path: ${path}`, 'success');
+                        workingPath = path;
+                        break;
+                    } else {
+                        log(`❌ Path not found: ${path} (${response.status})`, 'error');
+                    }
+                } catch (error) {
+                    log(`❌ Error testing ${path}: ${error.message}`, 'error');
+                }
+            }
+            
+            if (workingPath) {
+                // Test the restriction worker too
+                const restrictionPath = workingPath.replace('diseaseWorker.js', 'restrictionWorker.js');
+                try {
+                    const restrictionResponse = await fetch(restrictionPath);
+                    log(`Restriction Worker Script: ${restrictionResponse.ok ? '✅ Accessible' : '❌ Not Found'}`, restrictionResponse.ok ? 'success' : 'error');
+                    
+                    if (restrictionResponse.ok) {
+                        testWorkers();
+                    } else {
+                        log('❌ Restriction worker script not accessible', 'error');
+                    }
+                } catch (error) {
+                    log(`❌ Error testing restriction worker: ${error.message}`, 'error');
+                }
+            } else {
+                log('❌ No working worker script paths found', 'error');
+                log('Available files in current directory:', 'info');
+                // Try to list what's available
+                try {
+                    const dirResponse = await fetch('/');
+                    if (dirResponse.ok) {
+                        const html = await dirResponse.text();
+                        log('Directory listing might be available in browser console', 'info');
+                    }
+                } catch (error) {
+                    log('Could not check directory contents', 'error');
+                }
+            }
+        }
+
+        function testWorkers() {
+            log('🚀 Starting worker tests...', 'info');
+
+            // Test Disease Worker
+            try {
+                const diseaseWorker = new Worker('/diseaseWorker.js');
+                log('🔧 Disease Worker: Created', 'info');
+                
+                diseaseWorker.onmessage = function(e) {
+                    const { type, data } = e.data;
+                    
+                    if (type === 'READY') {
+                        log('✅ Disease Worker: Ready', 'success');
+                        
+                        // Test with a simple sequence
+                        diseaseWorker.postMessage({
+                            type: 'DETECT_MUTATIONS',
+                            data: { sequence: 'GAGGAGGTGGAG' }, // Contains sickle cell mutation
+                            id: 'test1'
+                        });
+                    } else if (type === 'MUTATIONS_DETECTED') {
+                        log(`✅ Disease Worker: Found ${data.mutations.length} mutations`, 'success');
+                        diseaseWorker.terminate();
+                    } else if (type === 'PROGRESS') {
+                        log(`📊 Disease Worker Progress: ${data.message}`, 'info');
+                    } else if (type === 'ERROR') {
+                        log(`❌ Disease Worker Error: ${data.error}`, 'error');
+                    }
+                };
+                
+                diseaseWorker.onerror = function(error) {
+                    log(`❌ Disease Worker Error: ${error.message || 'Unknown error'}`, 'error');
+                    console.error('Disease Worker Error Details:', error);
+                };
+
+                diseaseWorker.onmessageerror = function(error) {
+                    log(`❌ Disease Worker Message Error: ${error}`, 'error');
+                };
+                
+            } catch (error) {
+                log(`❌ Disease Worker: Failed to create - ${error.message}`, 'error');
+            }
+
+            // Test Restriction Worker
+            try {
+                const restrictionWorker = new Worker('/restrictionWorker.js');
+                log('🔧 Restriction Worker: Created', 'info');
+                
+                restrictionWorker.onmessage = function(e) {
+                    const { type, data } = e.data;
+                    
+                    if (type === 'READY') {
+                        log('✅ Restriction Worker: Ready', 'success');
+                        
+                        // Test with a simple sequence containing EcoRI site
+                        restrictionWorker.postMessage({
+                            type: 'FIND_CUT_SITES',
+                            data: { sequence: 'ATCGGAATTCGCA' }, // Contains EcoRI site
+                            id: 'test2'
+                        });
+                    } else if (type === 'CUT_SITES_FOUND') {
+                        log(`✅ Restriction Worker: Found ${data.cutSites.length} cut sites`, 'success');
+                        restrictionWorker.terminate();
+                    } else if (type === 'PROGRESS') {
+                        log(`📊 Restriction Worker Progress: ${data.message}`, 'info');
+                    } else if (type === 'ERROR') {
+                        log(`❌ Restriction Worker Error: ${data.error}`, 'error');
+                    }
+                };
+                
+                restrictionWorker.onerror = function(error) {
+                    log(`❌ Restriction Worker Error: ${error.message || 'Unknown error'}`, 'error');
+                    console.error('Restriction Worker Error Details:', error);
+                };
+
+                restrictionWorker.onmessageerror = function(error) {
+                    log(`❌ Restriction Worker Message Error: ${error}`, 'error');
+                };
+                
+            } catch (error) {
+                log(`❌ Restriction Worker: Failed to create - ${error.message}`, 'error');
+            }
+        }
+
+        // Start tests
+        testWorkerAccess();
+    </script>
+</body>
+</html>
